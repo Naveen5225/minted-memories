@@ -1,0 +1,79 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(255)
+  phone     String   @unique @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  orders Order[]
+
+  @@map("users")
+}
+
+model Order {
+  id             String   @id @default(cuid())
+  userId         String?  @map("user_id") @db.VarChar(191)
+  customerName   String   @map("customer_name") @db.VarChar(255)
+  phone          String   @db.VarChar(20)
+  addressJson    Json     @map("address_json")
+  subtotal       Decimal  @db.Decimal(10, 2)
+  deliveryCharge Decimal  @default(50) @map("delivery_charge") @db.Decimal(10, 2)
+  gst            Decimal  @db.Decimal(10, 2)
+  totalAmount    Decimal  @map("total_amount") @db.Decimal(10, 2)
+  paymentMode    String   @map("payment_mode") @db.VarChar(20) // "COD" or "ONLINE"
+  paymentStatus  String   @default("PENDING") @map("payment_status") @db.VarChar(20) // "PENDING", "PAID", "FAILED"
+  orderStatus    String   @default("NEW") @map("order_status") @db.VarChar(20) // "NEW", "ACCEPTED", "REJECTED", "CANCELLED", "COMPLETED"
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orderItems OrderItem[]
+  payments   Payment[]
+
+  @@index([userId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id           String   @id @default(cuid())
+  orderId      String   @map("order_id") @db.VarChar(191)
+  photoName    String   @map("photo_name") @db.VarChar(255)
+  photoUrl     String   @map("photo_url") @db.LongText
+  quantity     Int
+  pricePerUnit Decimal  @map("price_per_unit") @db.Decimal(10, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Payment {
+  id                String   @id @default(cuid())
+  orderId           String   @map("order_id") @db.VarChar(191)
+  razorpayOrderId   String?  @map("razorpay_order_id") @db.VarChar(255)
+  razorpayPaymentId String?  @map("razorpay_payment_id") @db.VarChar(255)
+  razorpaySignature String?  @map("razorpay_signature") @db.VarChar(255)
+  status            String   @default("PENDING") @db.VarChar(20) // "PENDING", "SUCCESS", "FAILED"
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("payments")
+}
