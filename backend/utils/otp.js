@@ -20,35 +20,38 @@ export const storeOTP = (phone, otp) => {
   if (!phone || !otp) {
     throw new Error('Phone and OTP are required')
   }
-  
-  otpStore.set(phone, {
-    otp: otp.toString(),
+  const phoneKey = String(phone).replace(/\D/g, '')
+  const otpStr = String(otp).trim()
+  otpStore.set(phoneKey, {
+    otp: otpStr,
     expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
   })
   
-  console.log(`OTP stored for ${phone}, expires in 5 minutes`)
+  console.log(`OTP stored for ${phoneKey}, expires in 5 minutes`)
 }
 
 // Verify OTP (without consuming it - for checking if valid)
 export const verifyOTP = (phone, otp, consume = true) => {
-  const stored = otpStore.get(phone)
+  const phoneKey = String(phone).replace(/\D/g, '')
+  const otpStr = String(otp).trim()
+  const stored = otpStore.get(phoneKey)
   
   if (!stored) {
     return { valid: false, message: 'OTP not found or expired' }
   }
 
   if (Date.now() > stored.expiresAt) {
-    otpStore.delete(phone)
+    otpStore.delete(phoneKey)
     return { valid: false, message: 'OTP expired' }
   }
 
-  if (stored.otp !== otp) {
+  if (stored.otp !== otpStr) {
     return { valid: false, message: 'Invalid OTP' }
   }
 
   // OTP verified, remove it only if consume is true
   if (consume) {
-    otpStore.delete(phone)
+    otpStore.delete(phoneKey)
   }
   return { valid: true }
 }

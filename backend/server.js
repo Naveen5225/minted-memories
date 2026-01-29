@@ -20,9 +20,9 @@ const PRICE_PER_MAGNET = 100
 const DELIVERY_CHARGE = 50
 const GST_RATE = 0.03 // 3%
 
-// Fixed Admin Credentials
-const ADMIN_USERNAME = 'naveen_0417'
-const ADMIN_PASSWORD = 'Naveen@041709'
+// Admin credentials from .env (set ADMIN_USERNAME and ADMIN_PASSWORD in backend/.env)
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'naveen_0417'
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Naveen@041709'
 
 // CORS configuration - must be before other middleware
 app.use(cors({
@@ -158,9 +158,12 @@ app.post('/api/auth/send-otp', cors(), async (req, res) => {
 // Verify OTP and create/login user
 app.post('/api/auth/verify-otp', async (req, res) => {
   try {
-    const { phone, otp, name } = req.body
+    const { phone: rawPhone, otp: rawOtp, name } = req.body
 
-    if (!phone || !/^\d{10}$/.test(phone)) {
+    const phone = String(rawPhone || '').replace(/\D/g, '')
+    const otp = String(rawOtp || '').trim()
+
+    if (!phone || phone.length !== 10) {
       return res.status(400).json({
         success: false,
         message: 'Valid 10-digit phone number is required'
@@ -240,9 +243,12 @@ app.post('/api/auth/verify-otp', async (req, res) => {
     })
   } catch (error) {
     console.error('Error verifying OTP:', error)
+    const message = process.env.NODE_ENV !== 'production'
+      ? (error.message || 'Failed to verify OTP. Please try again.')
+      : 'Failed to verify OTP. Please try again.'
     res.status(500).json({
       success: false,
-      message: 'Failed to verify OTP. Please try again.'
+      message
     })
   }
 })
