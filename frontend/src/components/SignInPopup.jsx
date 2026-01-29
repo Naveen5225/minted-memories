@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { useAuth } from '../context/AuthContext'
 
 function SignInPopup({ onClose, onSuccess }) {
@@ -23,7 +23,7 @@ function SignInPopup({ onClose, onSuccess }) {
 
     setLoading(true)
     try {
-      const response = await axios.post('/api/auth/send-otp', { phone })
+      const response = await api.post('/api/auth/send-otp', { phone })
       if (response.data.success) {
         setStep('otp')
         // In development, show OTP in alert
@@ -53,7 +53,7 @@ function SignInPopup({ onClose, onSuccess }) {
 
     setLoading(true)
     try {
-      const response = await axios.post('/api/auth/verify-otp', {
+      const response = await api.post('/api/auth/verify-otp', {
         phone,
         otp
       })
@@ -91,7 +91,7 @@ function SignInPopup({ onClose, onSuccess }) {
 
     setLoading(true)
     try {
-      const response = await axios.post('/api/auth/verify-otp', {
+      const response = await api.post('/api/auth/verify-otp', {
         phone,
         otp,
         name: name.trim()

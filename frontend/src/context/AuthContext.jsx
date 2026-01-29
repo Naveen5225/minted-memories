@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import axios from 'axios'
+import api from '../api'
 
 const AuthContext = createContext()
 
@@ -50,38 +50,41 @@ export const AuthProvider = ({ children }) => {
     setLoading(false)
   }, [])
 
-  // Configure axios to include token in requests
+  // Configure api client to include token in requests
   useEffect(() => {
     const userToken = localStorage.getItem('userToken')
-    if (userToken) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${userToken}`
+    const adminToken = localStorage.getItem('adminToken')
+    if (adminToken) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${adminToken}`
+    } else if (userToken) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${userToken}`
     }
-  }, [user])
+  }, [user, admin])
 
   const loginUser = (token, userData) => {
     localStorage.setItem('userToken', token)
     localStorage.setItem('userName', userData.name)
     setUser(userData)
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
   }
 
   const loginAdmin = (token, adminData) => {
     localStorage.setItem('adminToken', token)
     setAdmin(adminData)
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
   }
 
   const logoutUser = () => {
     localStorage.removeItem('userToken')
     localStorage.removeItem('userName')
     setUser(null)
-    delete axios.defaults.headers.common['Authorization']
+    delete api.defaults.headers.common['Authorization']
   }
 
   const logoutAdmin = () => {
     localStorage.removeItem('adminToken')
     setAdmin(null)
-    delete axios.defaults.headers.common['Authorization']
+    delete api.defaults.headers.common['Authorization']
   }
 
   const value = {

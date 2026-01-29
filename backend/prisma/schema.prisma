@@ -35,6 +35,7 @@ model Order {
   paymentMode    String   @map("payment_mode") @db.VarChar(20) // "COD" or "ONLINE"
   paymentStatus  String   @default("PENDING") @map("payment_status") @db.VarChar(20) // "PENDING", "PAID", "FAILED"
   orderStatus    String   @default("NEW") @map("order_status") @db.VarChar(20) // "NEW", "ACCEPTED", "REJECTED", "CANCELLED", "COMPLETED"
+  orderType      String   @default("MAGNET") @map("order_type") @db.VarChar(20) // "MAGNET", "POLAROID", or "MIXED" (informational only)
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -53,12 +54,16 @@ model OrderItem {
   photoUrl     String   @map("photo_url") @db.LongText
   quantity     Int
   pricePerUnit Decimal  @map("price_per_unit") @db.Decimal(10, 2)
+  orderType    String   @default("MAGNET") @map("order_type") @db.VarChar(20) // "MAGNET" or "POLAROID" - REQUIRED per item
+  polaroidType String?  @map("polaroid_type") @db.VarChar(50)
+  caption      String?  @db.VarChar(255)
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
+  @@index([orderType])
   @@map("order_items")
 }
 
@@ -76,4 +81,21 @@ model Payment {
 
   @@index([orderId])
   @@map("payments")
+}
+
+model EventBooking {
+  id             String   @id @default(cuid())
+  eventType      String   @map("event_type") @db.VarChar(50)
+  eventDate      DateTime @map("event_date")
+  timeSlot       String   @map("time_slot") @db.VarChar(50)
+  location       String   @db.VarChar(500)
+  expectedGuests Int      @map("expected_guests")
+  contactName    String   @map("contact_name") @db.VarChar(255)
+  contactPhone   String   @map("contact_phone") @db.VarChar(20)
+  notes          String?  @db.Text
+  status         String   @default("NEW") @db.VarChar(20) // "NEW", "CONFIRMED", "CANCELLED"
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("event_bookings")
 }

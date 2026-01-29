@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { useAuth } from '../context/AuthContext'
 import SignInPopup from './SignInPopup'
 import OrderSuccessModal from './OrderSuccessModal'
@@ -27,15 +27,28 @@ function PaymentSummary({ photos, subtotal, totalAmount, address, onBack, onClos
     setError('')
 
     try {
-      // Prepare photos data (without file objects)
-      const photosData = photos.map(photo => ({
-        photoName: photo.photoName,
-        photoUrl: photo.photoUrl,
-        quantity: photo.quantity
-      }))
+      // Prepare photos data (without file objects) - preserve orderType per item
+      const photosData = photos.map(photo => {
+        const itemOrderType = photo.orderType || 'MAGNET'
+        
+        // CRITICAL: Validate orderType exists
+        if (!photo.orderType) {
+          throw new Error(`Missing orderType for photo: ${photo.photoName}`)
+        }
+        
+        return {
+          photoName: photo.photoName,
+          photoUrl: photo.photoUrl,
+          quantity: photo.quantity,
+          pricePerUnit: 100, // PRICE_PER_MAGNET constant
+          orderType: itemOrderType, // REQUIRED: Each item preserves its own orderType
+          polaroidType: itemOrderType === 'POLAROID' ? (photo.polaroidType || null) : null,
+          caption: itemOrderType === 'POLAROID' ? (photo.caption || null) : null
+        }
+      })
 
-      // Create order
-      const orderResponse = await axios.post('/api/orders/create', {
+      // Create order (orderType is now per-item, not order-level)
+      const orderResponse = await api.post('/api/orders/create', {
         photos: photosData,
         address,
         paymentMode
@@ -55,7 +68,7 @@ function PaymentSummary({ photos, subtotal, totalAmount, address, onBack, onClos
         return
       } else {
         // Online payment - Create Razorpay order
-        const paymentResponse = await axios.post('/api/payment/create', {
+        const paymentResponse = await api.post('/api/payment/create', {
           orderId: order.id,
           amount: Math.round(totalAmount * 100) // Convert to paise
         })
@@ -85,18 +98,19 @@ function PaymentSummary({ photos, subtotal, totalAmount, address, onBack, onClos
         await loadRazorpayScript()
 
         const totalQuantity = photos.reduce((sum, photo) => sum + photo.quantity, 0)
+        const orderTypeLabel = orderType === 'POLAROID' ? 'Polaroid Print(s)' : 'Fridge Magnet(s)'
 
         const options = {
           key: key,
           amount: amount,
           currency: 'INR',
           name: 'Minted Memories',
-          description: `${totalQuantity} Custom Photo Fridge Magnet(s)`,
+          description: `${totalQuantity} Custom Photo ${orderTypeLabel}`,
           order_id: razorpayOrderId,
           handler: async function (response) {
             try {
               // Verify payment
-              const verifyResponse = await axios.post('/api/payment/verify', {
+              const verifyResponse = await api.post('/api/payment/verify', {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,

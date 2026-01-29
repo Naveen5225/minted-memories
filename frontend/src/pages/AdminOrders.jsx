@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import axios from 'axios'
+import api from '../api'
 import Navbar from '../components/Navbar'
 import ConfirmationModal from '../components/ConfirmationModal'
 
@@ -29,11 +29,29 @@ function AdminOrders() {
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`/api/orders/admin?status=${activeTab}`)
-      if (response.data.success) {
-        setOrders(response.data.orders)
+      let url = `/api/orders/admin`
+      
+      // Handle order type filter
+      if (activeTab === 'magnets' || activeTab === 'polaroids') {
+        // Filter by orderType on frontend (backend doesn't support this filter yet)
+        const response = await api.get(`/api/orders/admin?status=new`)
+        if (response.data.success) {
+          const filteredOrders = response.data.orders.filter(order => {
+            const orderType = order.orderType || 'MAGNET'
+            return activeTab === 'magnets' ? orderType === 'MAGNET' : orderType === 'POLAROID'
+          })
+          setOrders(filteredOrders)
+        } else {
+          setError('Failed to fetch orders')
+        }
       } else {
-        setError('Failed to fetch orders')
+        // Regular status filter
+        const response = await api.get(`${url}?status=${activeTab}`)
+        if (response.data.success) {
+          setOrders(response.data.orders)
+        } else {
+          setError('Failed to fetch orders')
+        }
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to fetch orders. Please try again.')
@@ -45,7 +63,7 @@ function AdminOrders() {
   const handleMarkCompleted = async (orderId) => {
     try {
       setUpdating(orderId)
-      const response = await axios.patch(`/api/orders/${orderId}/status`, {
+      const response = await api.patch(`/api/orders/${orderId}/status`, {
         orderStatus: 'COMPLETED'
       })
 
@@ -64,7 +82,7 @@ function AdminOrders() {
   const handleAccept = async (orderId) => {
     try {
       setUpdating(orderId)
-      const response = await axios.patch(`/api/orders/${orderId}/admin-action`, {
+      const response = await api.patch(`/api/orders/${orderId}/admin-action`, {
         action: 'ACCEPT'
       })
 
@@ -85,7 +103,7 @@ function AdminOrders() {
     
     try {
       setUpdating(selectedOrderId)
-      const response = await axios.patch(`/api/orders/${selectedOrderId}/admin-action`, {
+      const response = await api.patch(`/api/orders/${selectedOrderId}/admin-action`, {
         action: 'REJECT'
       })
 
@@ -105,7 +123,7 @@ function AdminOrders() {
 
   const handleDownloadPhoto = async (orderId, photoId, photoName) => {
     try {
-      const response = await axios.get(`/api/orders/${orderId}/photos/${photoId}/download`, {
+      const response = await api.get(`/api/orders/${orderId}/photos/${photoId}/download`, {
         responseType: 'blob'
       })
       
@@ -214,6 +232,26 @@ function AdminOrders() {
               New Orders
             </button>
             <button
+              onClick={() => setActiveTab('magnets')}
+              className={`px-4 py-2 font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'magnets'
+                  ? 'border-gray-900 text-gray-900'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Magnets
+            </button>
+            <button
+              onClick={() => setActiveTab('polaroids')}
+              className={`px-4 py-2 font-semibold border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'polaroids'
+                  ? 'border-gray-900 text-gray-900'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Polaroids
+            </button>
+            <button
               onClick={() => setActiveTab('completed')}
               className={`px-4 py-2 font-semibold border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'completed'
@@ -262,7 +300,9 @@ function AdminOrders() {
         {!loading && !error && orders.length === 0 && (
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
             <p className="text-gray-600">
-              No {activeTab === 'new' ? 'new' : activeTab === 'completed' ? 'completed' : activeTab === 'rejected' ? 'rejected' : 'cancelled'} orders found.
+              {activeTab === 'magnets' ? 'No magnet orders found.' :
+               activeTab === 'polaroids' ? 'No polaroid orders found.' :
+               `No ${activeTab === 'new' ? 'new' : activeTab === 'completed' ? 'completed' : activeTab === 'rejected' ? 'rejected' : 'cancelled'} orders found.`}
             </p>
           </div>
         )}
@@ -280,13 +320,24 @@ function AdminOrders() {
                   onClick={() => toggleOrderExpansion(order.id)}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="text-sm font-mono text-gray-500">
-                      #{order.id.slice(0, 8).toUpperCase()}
-                    </div>
-                    <div className="hidden sm:block">
-                      <p className="text-sm text-gray-600">
-                        {formatDate(order.createdAt)}
-                      </p>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="text-sm font-mono text-gray-500">
+                          #{order.id.slice(0, 8).toUpperCase()}
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                          (order.orderType || 'MAGNET') === 'POLAROID' 
+                            ? 'bg-pink-100 text-pink-700' 
+                            : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {(order.orderType || 'MAGNET') === 'POLAROID' ? 'POLAROID' : 'MAGNET'}
+                        </span>
+                      </div>
+                      <div className="hidden sm:block">
+                        <p className="text-sm text-gray-600">
+                          {formatDate(order.createdAt)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -360,6 +411,21 @@ function AdminOrders() {
                           {order.address.district}, {order.address.state} -{' '}
                           {order.address.pincode}
                         </p>
+                        {/* Order Type Counts */}
+                        {(order.magnetCount > 0 || order.polaroidCount > 0) && (
+                          <div className="flex items-center gap-2 mt-3 flex-wrap">
+                            {order.magnetCount > 0 && (
+                              <span className="px-2 py-1 rounded text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                                Magnets: {order.magnetCount}
+                              </span>
+                            )}
+                            {order.polaroidCount > 0 && (
+                              <span className="px-2 py-1 rounded text-xs font-semibold bg-pink-100 text-pink-700 border border-pink-200">
+                                Polaroids: {order.polaroidCount}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -382,12 +448,37 @@ function AdminOrders() {
                               />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 truncate">
-                                {item.photoName}
-                              </p>
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-semibold text-gray-900 truncate">
+                                  {item.photoName}
+                                </p>
+                                {/* Order Type Badge */}
+                                <span className={`px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0 ${
+                                  (item.orderType || order.orderType || 'MAGNET') === 'POLAROID' 
+                                    ? 'bg-pink-100 text-pink-700 border border-pink-200' 
+                                    : 'bg-purple-100 text-purple-700 border border-purple-200'
+                                }`}>
+                                  {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' ? 'POLAROID' : 'MAGNET'}
+                                </span>
+                              </div>
                               <p className="text-sm text-gray-600">
                                 Quantity: {item.quantity}
                               </p>
+                              {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' && item.polaroidType && (
+                                <p className="text-xs text-purple-600 font-semibold mt-1">
+                                  Type: {item.polaroidType}
+                                </p>
+                              )}
+                              {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' && item.caption && item.caption.trim() && (
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Caption: "{item.caption}"
+                                </p>
+                              )}
+                              {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' && item.polaroidType === 'Custom Text Caption' && (!item.caption || !item.caption.trim()) && (
+                                <p className="text-xs text-gray-400 italic mt-1">
+                                  (No caption provided)
+                                </p>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <button

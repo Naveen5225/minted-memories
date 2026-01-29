@@ -14,8 +14,8 @@ function Cart() {
   const [showAddressForm, setShowAddressForm] = useState(false)
 
   const photos = items
-  const totalMagnets = photos.reduce((sum, photo) => sum + photo.quantity, 0)
-  const subtotal = totalMagnets * PRICE_PER_MAGNET
+  const totalItems = photos.reduce((sum, photo) => sum + photo.quantity, 0)
+  const subtotal = totalItems * PRICE_PER_MAGNET
   const gst = subtotal * GST_RATE
   const totalAmount = subtotal + DELIVERY_CHARGE + gst
 
@@ -31,12 +31,21 @@ function Cart() {
 
   const handleAddressSubmit = (addressData) => {
     setShowAddressForm(false)
-    // Prepare photos data (without file object, just metadata) for consistency
-    const photosData = photos.map((photo) => ({
-      photoName: photo.photoName,
-      photoUrl: photo.photoUrl,
-      quantity: photo.quantity,
-    }))
+    
+    // Prepare photos data (without file object, just metadata) - preserve orderType per item
+    const photosData = photos.map((photo) => {
+      const itemOrderType = photo.orderType || 'MAGNET'
+      
+      return {
+        photoName: photo.photoName,
+        photoUrl: photo.photoUrl,
+        quantity: photo.quantity,
+        pricePerUnit: 100, // PRICE_PER_MAGNET constant
+        orderType: itemOrderType, // REQUIRED: Each item preserves its own orderType
+        polaroidType: itemOrderType === 'POLAROID' ? (photo.polaroidType || null) : null,
+        caption: itemOrderType === 'POLAROID' ? (photo.caption || null) : null
+      }
+    })
     handleOrderClick(photosData, addressData)
   }
 
@@ -65,11 +74,24 @@ function Cart() {
           <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
             Your <span className="text-gradient">Cart</span>
           </h1>
-          {photos.length > 0 && (
-            <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
-              {photos.length} {photos.length === 1 ? 'item' : 'items'}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {photos.length > 0 && (
+              <>
+                <button
+                  onClick={() => navigate('/')}
+                  className="flex items-center gap-2 px-4 py-2 gradient-primary text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all transform hover:scale-[1.02] shadow-md"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Create More
+                </button>
+                <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
+                  {photos.length} {photos.length === 1 ? 'item' : 'items'}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
         {photos.length === 0 && (
@@ -123,12 +145,32 @@ function Cart() {
                         />
                       </div>
                       <div className="flex-1 min-w-0 space-y-2">
-                        <h3 className="font-bold text-lg text-gray-900 truncate">
-                          {photo.photoName}
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-lg text-gray-900 truncate">
+                            {photo.photoName}
+                          </h3>
+                          {/* Order Type Badge */}
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0 ${
+                            (photo.orderType || 'MAGNET') === 'POLAROID' 
+                              ? 'bg-pink-100 text-pink-700 border border-pink-200' 
+                              : 'bg-purple-100 text-purple-700 border border-purple-200'
+                          }`}>
+                            {(photo.orderType || 'MAGNET') === 'POLAROID' ? 'POLAROID' : 'MAGNET'}
+                          </span>
+                        </div>
                         <p className="text-sm text-gray-600">
-                          ₹{PRICE_PER_MAGNET} per magnet
+                          ₹{PRICE_PER_MAGNET} per {(photo.orderType || 'MAGNET') === 'POLAROID' ? 'polaroid' : 'magnet'}
                         </p>
+                        {(photo.orderType || 'MAGNET') === 'POLAROID' && photo.polaroidType && (
+                          <p className="text-xs text-purple-600 font-semibold">
+                            Type: {photo.polaroidType}
+                          </p>
+                        )}
+                        {(photo.orderType || 'MAGNET') === 'POLAROID' && photo.caption && (
+                          <p className="text-xs text-gray-500">
+                            Caption: "{photo.caption}"
+                          </p>
+                        )}
                         <div className="flex items-center gap-3">
                           <span className="text-xs text-gray-500">Quantity:</span>
                           <div className="flex items-center gap-2">
@@ -198,8 +240,8 @@ function Cart() {
                   <h2 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h2>
                   <div className="space-y-4 mb-6">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Total Magnets:</span>
-                      <span className="font-semibold text-gray-800">{totalMagnets}</span>
+                      <span className="text-gray-600">Total Items:</span>
+                      <span className="font-semibold text-gray-800">{totalItems}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Subtotal:</span>

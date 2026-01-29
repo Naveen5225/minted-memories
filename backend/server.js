@@ -307,13 +307,21 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
       })
     }
 
-    // Validate each photo
+    // Validate each photo and ensure orderType exists
     let totalQuantity = 0
     for (const photo of photos) {
       if (!photo.photoName || !photo.photoUrl || !photo.quantity) {
         return res.status(400).json({
           success: false,
           message: 'Each photo must have photoName, photoUrl, and quantity'
+        })
+      }
+
+      // CRITICAL: Validate orderType exists on each item
+      if (!photo.orderType || !['MAGNET', 'POLAROID'].includes(photo.orderType)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Each photo must have a valid orderType (MAGNET or POLAROID)'
         })
       }
 
@@ -324,8 +332,31 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
         })
       }
 
+      // Validate polaroidType ONLY if orderType is POLAROID
+      if (photo.orderType === 'POLAROID' && !photo.polaroidType) {
+        return res.status(400).json({
+          success: false,
+          message: 'Polaroid type is required for Polaroid orders'
+        })
+      }
+
       totalQuantity += photo.quantity
     }
+
+    // Normalize order items - preserve orderType per item
+    const normalizedItems = photos.map(photo => {
+      const itemOrderType = photo.orderType || 'MAGNET' // Fallback for safety
+      
+      return {
+        photoName: photo.photoName,
+        photoUrl: photo.photoUrl,
+        quantity: photo.quantity,
+        pricePerUnit: PRICE_PER_MAGNET,
+        orderType: itemOrderType, // REQUIRED: Each item has its own orderType
+        polaroidType: itemOrderType === 'POLAROID' ? (photo.polaroidType || null) : null,
+        caption: itemOrderType === 'POLAROID' ? (photo.caption || null) : null
+      }
+    })
 
     // Validate address
     const requiredFields = ['fullName', 'phone', 'houseNo', 'village', 'city', 'district', 'state', 'pincode']
@@ -374,6 +405,12 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
       })
     }
 
+    // Determine order-level type for informational purposes
+    const uniqueOrderTypes = [...new Set(normalizedItems.map(item => item.orderType))]
+    const orderLevelType = uniqueOrderTypes.length === 1 
+      ? uniqueOrderTypes[0] 
+      : 'MIXED' // Mixed order contains both MAGNET and POLAROID
+
     // Calculate pricing based on total quantity
     const pricing = calculatePricing(totalQuantity)
 
@@ -383,7 +420,11 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
       try {
         const order = await prisma.order.create({
           data: {
-            userId: userId,
+            user: {
+              connect: {
+                id: userId
+              }
+            },
             customerName: address.fullName,
             phone: address.phone,
             addressJson: address,
@@ -394,13 +435,9 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
             paymentMode: 'COD',
             paymentStatus: 'PENDING',
             orderStatus: 'NEW',
+            orderType: orderLevelType, // Order-level type is now informational only (MAGNET, POLAROID, or MIXED)
             orderItems: {
-              create: photos.map(photo => ({
-                photoName: photo.photoName,
-                photoUrl: photo.photoUrl,
-                quantity: photo.quantity,
-                pricePerUnit: PRICE_PER_MAGNET
-              }))
+              create: normalizedItems
             }
           },
           include: {
@@ -442,7 +479,11 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
       try {
         const order = await prisma.order.create({
           data: {
-            userId: userId,
+            user: {
+              connect: {
+                id: userId
+              }
+            },
             customerName: address.fullName,
             phone: address.phone,
             addressJson: address,
@@ -453,13 +494,9 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
             paymentMode: 'ONLINE',
             paymentStatus: 'PENDING',
             orderStatus: 'NEW',
+            orderType: orderLevelType, // Order-level type is now informational only (MAGNET, POLAROID, or MIXED)
             orderItems: {
-              create: photos.map(photo => ({
-                photoName: photo.photoName,
-                photoUrl: photo.photoUrl,
-                quantity: photo.quantity,
-                pricePerUnit: PRICE_PER_MAGNET
-              }))
+              create: normalizedItems
             }
           },
           include: {
@@ -532,6 +569,22 @@ app.get('/api/orders/user', authenticateUser, async (req, res) => {
     const formattedOrders = orders.map(order => {
       const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0)
       
+      // Calculate magnet and polaroid counts based on each item's orderType
+      let magnetCount = 0
+      let polaroidCount = 0
+      
+      // Safety check: ensure orderItems exists
+      if (order.orderItems && order.orderItems.length > 0) {
+        order.orderItems.forEach(item => {
+          const itemOrderType = item.orderType || 'MAGNET'
+          if (itemOrderType === 'POLAROID') {
+            polaroidCount += item.quantity
+          } else {
+            magnetCount += item.quantity
+          }
+        })
+      }
+      
       return {
         id: order.id,
         customerName: order.customerName,
@@ -541,9 +594,14 @@ app.get('/api/orders/user', authenticateUser, async (req, res) => {
           photoName: item.photoName,
           photoUrl: item.photoUrl,
           quantity: item.quantity,
-          pricePerUnit: parseFloat(item.pricePerUnit)
+          pricePerUnit: parseFloat(item.pricePerUnit),
+          orderType: item.orderType || 'MAGNET', // REQUIRED: Use item's own orderType
+          polaroidType: item.polaroidType || null,
+          caption: item.caption || null
         })),
         totalQuantity: totalQuantity,
+        magnetCount: magnetCount,
+        polaroidCount: polaroidCount,
         subtotal: parseFloat(order.subtotal),
         deliveryCharge: parseFloat(order.deliveryCharge),
         gst: parseFloat(order.gst),
@@ -551,6 +609,7 @@ app.get('/api/orders/user', authenticateUser, async (req, res) => {
         paymentMode: order.paymentMode,
         paymentStatus: order.paymentStatus,
         orderStatus: order.orderStatus,
+        orderType: order.orderType || 'MAGNET',
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       }
@@ -611,6 +670,22 @@ app.get('/api/orders/admin', authenticateAdmin, async (req, res) => {
     const formattedOrders = orders.map(order => {
       const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0)
       
+      // Calculate magnet and polaroid counts based on each item's orderType
+      let magnetCount = 0
+      let polaroidCount = 0
+      
+      // Safety check: ensure orderItems exists
+      if (order.orderItems && order.orderItems.length > 0) {
+        order.orderItems.forEach(item => {
+          const itemOrderType = item.orderType || 'MAGNET'
+          if (itemOrderType === 'POLAROID') {
+            polaroidCount += item.quantity
+          } else {
+            magnetCount += item.quantity
+          }
+        })
+      }
+      
       return {
         id: order.id,
         userId: order.userId,
@@ -623,9 +698,14 @@ app.get('/api/orders/admin', authenticateAdmin, async (req, res) => {
           photoName: item.photoName,
           photoUrl: item.photoUrl,
           quantity: item.quantity,
-          pricePerUnit: parseFloat(item.pricePerUnit)
+          pricePerUnit: parseFloat(item.pricePerUnit),
+          orderType: item.orderType || 'MAGNET', // REQUIRED: Use item's own orderType
+          polaroidType: item.polaroidType || null,
+          caption: item.caption || null
         })),
         totalQuantity: totalQuantity,
+        magnetCount: magnetCount,
+        polaroidCount: polaroidCount,
         subtotal: parseFloat(order.subtotal),
         deliveryCharge: parseFloat(order.deliveryCharge),
         gst: parseFloat(order.gst),
@@ -633,6 +713,7 @@ app.get('/api/orders/admin', authenticateAdmin, async (req, res) => {
         paymentMode: order.paymentMode,
         paymentStatus: order.paymentStatus,
         orderStatus: order.orderStatus,
+        orderType: order.orderType || 'MAGNET',
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       }
@@ -1181,6 +1262,7 @@ app.post('/api/payment/create', authenticateUser, async (req, res) => {
 
     // Calculate total quantity for description
     const totalQuantity = order.orderItems.reduce((sum, item) => sum + item.quantity, 0)
+    const orderTypeLabel = (order.orderType === 'POLAROID') ? 'Polaroid Print(s)' : 'Fridge Magnet(s)'
 
     // Create Razorpay order
     const razorpayOptions = {
@@ -1190,7 +1272,7 @@ app.post('/api/payment/create', authenticateUser, async (req, res) => {
       notes: {
         orderId: order.id,
         totalQuantity: totalQuantity.toString(),
-        description: `${totalQuantity} Custom Photo Fridge Magnet(s)`
+        description: `${totalQuantity} Custom Photo ${orderTypeLabel}`
       }
     }
 
@@ -1364,6 +1446,211 @@ app.post('/api/contact', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to send message. Please try again.'
+    })
+  }
+})
+
+// ==================== EVENT BOOKING ENDPOINTS ====================
+
+// Book event (public endpoint)
+app.post('/api/events/book', async (req, res) => {
+  try {
+    const { eventType, eventDate, timeSlot, location, expectedGuests, contactName, contactPhone, notes } = req.body
+
+    // Validate required fields
+    if (!eventType || !eventDate || !timeSlot || !location || !expectedGuests || !contactName || !contactPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'All required fields must be provided'
+      })
+    }
+
+    // Validate phone (10 digits)
+    if (!/^\d{10}$/.test(contactPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number must be exactly 10 digits'
+      })
+    }
+
+    // Validate event date is in the future
+    const eventDateObj = new Date(eventDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (eventDateObj < today) {
+      return res.status(400).json({
+        success: false,
+        message: 'Event date must be in the future'
+      })
+    }
+
+    // Validate expected guests is positive
+    if (expectedGuests < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Expected guests must be at least 1'
+      })
+    }
+
+    // Create event booking
+    const booking = await prisma.eventBooking.create({
+      data: {
+        eventType,
+        eventDate: eventDateObj,
+        timeSlot,
+        location: location.trim(),
+        expectedGuests: parseInt(expectedGuests),
+        contactName: contactName.trim(),
+        contactPhone: contactPhone.trim(),
+        notes: notes ? notes.trim() : null,
+        status: 'NEW'
+      }
+    })
+
+    res.json({
+      success: true,
+      message: 'Booking request received. We\'ll contact you shortly.',
+      booking: {
+        id: booking.id,
+        eventType: booking.eventType,
+        eventDate: booking.eventDate,
+        timeSlot: booking.timeSlot
+      }
+    })
+  } catch (error) {
+    console.error('Error creating event booking:', error)
+    // Provide more specific error message
+    let errorMessage = 'Failed to submit booking request. Please try again.'
+    if (error.code === 'P2003' || error.message?.includes('Foreign key constraint')) {
+      errorMessage = 'Database error: Please ensure all required tables exist. Run database migrations.'
+    } else if (error.message?.includes('doesn\'t exist') || error.message?.includes('Unknown table')) {
+      errorMessage = 'Database error: EventBooking table not found. Please run: npx prisma migrate dev'
+    } else if (error.message) {
+      errorMessage = error.message
+    }
+    res.status(500).json({
+      success: false,
+      message: errorMessage
+    })
+  }
+})
+
+// Get admin notification counts (new orders + new events)
+app.get('/api/admin/notifications', authenticateAdmin, async (req, res) => {
+  try {
+    // Count new orders (status = "NEW")
+    const newOrdersCount = await prisma.order.count({
+      where: {
+        orderStatus: 'NEW'
+      }
+    })
+
+    // Count new event bookings (status = "NEW")
+    const newEventsCount = await prisma.eventBooking.count({
+      where: {
+        status: 'NEW'
+      }
+    })
+
+    res.json({
+      success: true,
+      newOrdersCount,
+      newEventsCount
+    })
+  } catch (error) {
+    console.error('Error fetching admin notifications:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notification counts'
+    })
+  }
+})
+
+// Get all event bookings (admin only)
+app.get('/api/admin/events', authenticateAdmin, async (req, res) => {
+  try {
+    const { status } = req.query
+
+    const whereClause = {}
+    if (status && ['NEW', 'CONFIRMED', 'CANCELLED'].includes(status)) {
+      whereClause.status = status.toUpperCase()
+    }
+
+    const bookings = await prisma.eventBooking.findMany({
+      where: whereClause,
+      orderBy: {
+        createdAt: 'desc' // Latest bookings first (like orders)
+      }
+    })
+
+    res.json({
+      success: true,
+      bookings: bookings.map(booking => ({
+        id: booking.id,
+        eventType: booking.eventType,
+        eventDate: booking.eventDate,
+        timeSlot: booking.timeSlot,
+        location: booking.location,
+        expectedGuests: booking.expectedGuests,
+        contactName: booking.contactName,
+        contactPhone: booking.contactPhone,
+        notes: booking.notes,
+        status: booking.status,
+        createdAt: booking.createdAt,
+        updatedAt: booking.updatedAt
+      }))
+    })
+  } catch (error) {
+    console.error('Error fetching event bookings:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch event bookings. Please try again.'
+    })
+  }
+})
+
+// Update event booking status (admin only)
+app.patch('/api/admin/events/:id/status', authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+
+    if (!status || !['CONFIRMED', 'CANCELLED'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status must be CONFIRMED or CANCELLED'
+      })
+    }
+
+    const booking = await prisma.eventBooking.findUnique({
+      where: { id }
+    })
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event booking not found'
+      })
+    }
+
+    const updatedBooking = await prisma.eventBooking.update({
+      where: { id },
+      data: { status }
+    })
+
+    res.json({
+      success: true,
+      message: `Event booking ${status.toLowerCase()} successfully`,
+      booking: {
+        id: updatedBooking.id,
+        status: updatedBooking.status
+      }
+    })
+  } catch (error) {
+    console.error('Error updating event booking status:', error)
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update event booking status. Please try again.'
     })
   }
 })

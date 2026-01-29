@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Navbar from '../components/Navbar'
-import axios from 'axios'
+import api from '../api'
 
 function Contact() {
   const [formData, setFormData] = useState({
@@ -26,7 +26,7 @@ function Contact() {
     setIsSubmitting(true)
 
     try {
-      await axios.post('/api/contact', formData)
+      await api.post('/api/contact', formData)
       setSubmitSuccess(true)
       setFormData({ name: '', email: '', message: '' })
       setTimeout(() => setSubmitSuccess(false), 5000)

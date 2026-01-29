@@ -8,7 +8,11 @@ function OrderSection() {
   const { items, addItem, removeItem, updateQuantity } = useCart()
   const [currentPhoto, setCurrentPhoto] = useState(null)
   const [photoName, setPhotoName] = useState('')
+  const [orderType, setOrderType] = useState('MAGNET') // 'MAGNET' or 'POLAROID'
+  const [polaroidType, setPolaroidType] = useState('')
+  const [caption, setCaption] = useState('')
   const fileInputRef = useRef(null)
+  const uploadCardRef = useRef(null)
 
   const PRICE_PER_MAGNET = 100
   const DELIVERY_CHARGE = 50
@@ -16,14 +20,29 @@ function OrderSection() {
   const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
   const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png']
 
-  const photos = items
+  const polaroidTypes = [
+    'Classic White Border',
+    'Vintage Matte',
+    'Black Border',
+    'Mini Polaroid (2×3)',
+    'Square Polaroid',
+    'Film Strip Style',
+    'Retro Date Stamp',
+    'Custom Text Caption'
+  ]
 
-  // Calculate totals
+  // Filter items by current orderType for display
+  const photos = items.filter(item => (item.orderType || 'MAGNET') === orderType)
+
+  // Calculate totals (only for current orderType)
   const totalPhotos = photos.length
-  const totalMagnets = photos.reduce((sum, photo) => sum + photo.quantity, 0)
-  const subtotal = totalMagnets * PRICE_PER_MAGNET
+  const totalItems = photos.reduce((sum, photo) => sum + photo.quantity, 0)
+  const subtotal = totalItems * PRICE_PER_MAGNET
   const gst = subtotal * GST_RATE
   const totalAmount = subtotal + DELIVERY_CHARGE + gst
+  
+  // Keep totalMagnets for backward compatibility in display
+  const totalMagnets = totalItems
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0]
@@ -58,17 +77,28 @@ function OrderSection() {
       return
     }
 
+    // Validate polaroid type if orderType is POLAROID
+    if (orderType === 'POLAROID' && !polaroidType) {
+      alert('Please select a Polaroid type')
+      return
+    }
+
     const newPhoto = {
       id: Date.now().toString(),
       photoName: photoName.trim(),
       photoUrl: currentPhoto.preview, // Store as base64
       quantity: 1,
-      file: currentPhoto.file
+      file: currentPhoto.file,
+      orderType: orderType,
+      polaroidType: orderType === 'POLAROID' ? polaroidType : null,
+      caption: (orderType === 'POLAROID' && polaroidType === 'Custom Text Caption' && caption.trim()) ? caption.trim() : null
     }
 
     addItem(newPhoto)
     setCurrentPhoto(null)
     setPhotoName('')
+    setPolaroidType('')
+    setCaption('')
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -115,20 +145,59 @@ function OrderSection() {
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '2s' }}></div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Order Type Toggle */}
+        <div className="flex justify-center mb-8">
+          <div className="inline-flex rounded-xl bg-white p-1 shadow-md border border-purple-100">
+            <button
+              onClick={() => {
+                setOrderType('MAGNET')
+                setCurrentPhoto(null)
+                setPhotoName('')
+                setPolaroidType('')
+                setCaption('')
+              }}
+              className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                orderType === 'MAGNET'
+                  ? 'gradient-primary text-white shadow-md'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Photo Magnets
+            </button>
+            <button
+              onClick={() => {
+                setOrderType('POLAROID')
+                setCurrentPhoto(null)
+                setPhotoName('')
+                setPolaroidType('')
+                setCaption('')
+              }}
+              className={`px-6 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                orderType === 'POLAROID'
+                  ? 'gradient-primary text-white shadow-md'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Polaroids
+            </button>
+          </div>
+        </div>
+
         {/* Hero + Order Section - 2 Column Layout */}
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start mb-12">
           {/* Left Side - Headline & Trust Badges */}
           <div className="space-y-6 lg:pt-8">
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
-                <span className="block text-gradient mt-2">Minted Memories...</span>
-              </h1>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
                 Turn Your Photos Into
-                <span className="block text-gradient mt-2">Beautiful Fridge Magnets</span>
+                <span className="block text-gradient mt-2">
+                  {orderType === 'MAGNET' ? 'Beautiful Fridge Magnets' : 'Beautiful Polaroid Prints'}
+                </span>
               </h1>
               <p className="text-lg sm:text-xl text-gray-600 leading-relaxed">
-                Upload your memories, choose quantity, and get them delivered in 2–3 days
+                {orderType === 'MAGNET' 
+                  ? 'Upload your memories, choose quantity, and get them delivered in 2–3 days'
+                  : 'Upload your photos, choose style, and get premium Polaroid prints delivered'}
               </p>
             </div>
 
@@ -156,7 +225,7 @@ function OrderSection() {
           </div>
 
           {/* Right Side - Premium Order Card */}
-          <div className="relative">
+          <div className="relative" ref={uploadCardRef}>
             <div className="gradient-border">
               <div className="gradient-border-inner p-6 sm:p-8">
                 <div className="space-y-6">
@@ -171,7 +240,7 @@ function OrderSection() {
                         />
                       </div>
                       <p className="text-gray-500 text-sm">
-                        Upload your first photo to start creating beautiful fridge magnets ✨
+                        Upload your first photo to start creating beautiful {orderType === 'MAGNET' ? 'fridge magnets' : 'Polaroid prints'} ✨
                       </p>
                     </div>
                   )}
@@ -217,17 +286,54 @@ function OrderSection() {
                                 className="w-full h-full object-cover"
                               />
                             </div>
-                            <div className="flex-1">
-                              <label className="block text-xs font-semibold text-gray-700 mb-2">
-                                Photo Name <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="text"
-                                value={photoName}
-                                onChange={(e) => setPhotoName(e.target.value)}
-                                placeholder="e.g., Birthday Pic, Mom & Dad"
-                                className="w-full px-3 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white"
-                              />
+                            <div className="flex-1 space-y-3">
+                              <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-2">
+                                  Photo Name <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={photoName}
+                                  onChange={(e) => setPhotoName(e.target.value)}
+                                  placeholder="e.g., Birthday Pic, Mom & Dad"
+                                  className="w-full px-3 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white"
+                                />
+                              </div>
+
+                              {/* Polaroid Type Selection */}
+                              {orderType === 'POLAROID' && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-700 mb-2">
+                                    Polaroid Type <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={polaroidType}
+                                    onChange={(e) => setPolaroidType(e.target.value)}
+                                    className="w-full px-3 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white"
+                                  >
+                                    <option value="">Select type</option>
+                                    {polaroidTypes.map(type => (
+                                      <option key={type} value={type}>{type}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              {/* Custom Caption (only for Custom Text Caption) */}
+                              {orderType === 'POLAROID' && polaroidType === 'Custom Text Caption' && (
+                                <div>
+                                  <label className="block text-xs font-semibold text-gray-700 mb-2">
+                                    Caption Text
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={caption}
+                                    onChange={(e) => setCaption(e.target.value)}
+                                    placeholder="Enter caption text"
+                                    className="w-full px-3 py-2 text-sm border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all bg-white"
+                                  />
+                                </div>
+                              )}
                             </div>
                           </div>
                           <button
@@ -250,7 +356,32 @@ function OrderSection() {
         {/* Your Order - Below main card (like previous layout) */}
         {photos.length > 0 && (
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sm:p-8">
-            <h3 className="text-xl font-semibold text-gray-900 mb-6">Your Order</h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-gray-900">
+                Your {orderType === 'MAGNET' ? 'Magnets' : 'Polaroids'} Order
+              </h3>
+              <button
+                onClick={() => {
+                  // Scroll to the upload card section smoothly
+                  if (uploadCardRef.current) {
+                    uploadCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    // Focus on the file input after scroll completes
+                    setTimeout(() => {
+                      const fileInput = document.getElementById('photo-upload')
+                      if (fileInput && fileInputRef.current) {
+                        fileInputRef.current.click() // Opens file picker
+                      }
+                    }, 600)
+                  }
+                }}
+                className="flex items-center gap-2 px-4 py-2 gradient-primary text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all transform hover:scale-[1.02] shadow-md"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create More
+              </button>
+            </div>
 
             {/* Photos List */}
             <div className="space-y-4 mb-6">
@@ -271,8 +402,18 @@ function OrderSection() {
                       {photo.photoName}
                     </h4>
                     <p className="text-sm text-gray-600">
-                      ₹{PRICE_PER_MAGNET} per magnet
+                      ₹{PRICE_PER_MAGNET} per {photo.orderType === 'POLAROID' ? 'polaroid' : 'magnet'}
                     </p>
+                    {photo.orderType === 'POLAROID' && photo.polaroidType && (
+                      <p className="text-xs text-purple-600 mt-1">
+                        Type: {photo.polaroidType}
+                      </p>
+                    )}
+                    {photo.orderType === 'POLAROID' && photo.caption && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Caption: {photo.caption}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-600">Quantity:</span>
@@ -327,8 +468,8 @@ function OrderSection() {
                 <span className="font-semibold">{totalPhotos}</span>
               </div>
               <div className="flex justify-between text-sm text-gray-600">
-                <span>Total Magnets:</span>
-                <span className="font-semibold">{totalMagnets}</span>
+                <span>Total {orderType === 'MAGNET' ? 'Magnets' : 'Polaroids'}:</span>
+                <span className="font-semibold">{totalItems}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-700">Subtotal:</span>

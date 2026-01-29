@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -22,7 +22,7 @@ function AdminLoginPopup({ onClose }) {
 
     setLoading(true)
     try {
-      const response = await axios.post('/api/auth/admin-login', {
+      const response = await api.post('/api/auth/admin-login', {
         username,
         password
       })

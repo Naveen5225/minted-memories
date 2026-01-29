@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import ProductGallery from '../components/ProductGallery'
 import OrderSection from '../components/OrderSection'
+import EventBookingForm from '../components/EventBookingForm'
 import Footer from '../components/Footer'
 
 function Home() {
@@ -41,6 +42,9 @@ function Home() {
 
       {/* Hero + Order Section Combined */}
       <OrderSection onOrderClick={handleOrderClick} />
+      
+      {/* Event Booking Section */}
+      <EventBookingForm />
       
       {/* Product Gallery Below */}
       <ProductGallery />

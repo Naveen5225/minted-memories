@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
-import axios from 'axios'
+import api from '../api'
 import ConfirmationModal from '../components/ConfirmationModal'
 
 function Orders() {
@@ -27,7 +27,7 @@ function Orders() {
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      const response = await axios.get('/api/orders/user')
+      const response = await api.get('/api/orders/user')
       if (response.data.success) {
         setOrders(response.data.orders)
       } else {
@@ -45,7 +45,7 @@ function Orders() {
       setProcessingPayment(order.id)
       
       // Create Razorpay payment order
-      const paymentResponse = await axios.post('/api/payment/create', {
+      const paymentResponse = await api.post('/api/payment/create', {
         orderId: order.id,
         amount: Math.round(order.totalAmount * 100) // Convert to paise
       })
@@ -81,12 +81,12 @@ function Orders() {
         amount: amount,
         currency: 'INR',
         name: 'Minted Memories',
-        description: `${totalQuantity} Custom Photo Fridge Magnet(s)`,
+        description: `${totalQuantity} Custom Photo ${order.orderType === 'POLAROID' ? 'Polaroid Print(s)' : 'Fridge Magnet(s)'}`,
         order_id: razorpayOrderId,
         handler: async function (response) {
           try {
             // Verify payment
-            const verifyResponse = await axios.post('/api/payment/verify', {
+            const verifyResponse = await api.post('/api/payment/verify', {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
@@ -134,7 +134,7 @@ function Orders() {
     
     try {
       setCancelling(selectedOrderId)
-      const response = await axios.patch(`/api/orders/${selectedOrderId}/cancel`)
+      const response = await api.patch(`/api/orders/${selectedOrderId}/cancel`)
 
       if (response.data.success) {
         setShowCancelModal(false)
@@ -260,15 +260,30 @@ function Orders() {
                     {/* Header */}
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 pb-4 border-b border-purple-100">
                       <div>
-                        <h3 className="text-xl font-bold text-gray-900 mb-1">
-                          Order #{order.id.slice(0, 8).toUpperCase()}
-                        </h3>
-                        <p className="text-sm text-gray-600 flex items-center gap-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-xl font-bold text-gray-900">
+                            Order #{order.id.slice(0, 8).toUpperCase()}
+                          </h3>
+                        </div>
+                        <p className="text-sm text-gray-600 flex items-center gap-2 mb-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           {formatDate(order.createdAt)}
                         </p>
+                        {/* Order Type Counts */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {order.magnetCount > 0 && (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                              Magnets: {order.magnetCount}
+                            </span>
+                          )}
+                          {order.polaroidCount > 0 && (
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-pink-100 text-pink-700 border border-pink-200">
+                              Polaroids: {order.polaroidCount}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span className={`px-4 py-2 rounded-full text-sm font-bold border-2 ${getStatusColor(order.orderStatus)}`}>
                         {getStatusText(order.orderStatus)}
@@ -290,8 +305,33 @@ function Orders() {
                                 />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="font-bold text-gray-900 truncate">{item.photoName}</p>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-bold text-gray-900 truncate">{item.photoName}</p>
+                                  {/* Order Type Badge */}
+                                  <span className={`px-2 py-0.5 rounded text-xs font-semibold flex-shrink-0 ${
+                                    (item.orderType || order.orderType || 'MAGNET') === 'POLAROID' 
+                                      ? 'bg-pink-100 text-pink-700 border border-pink-200' 
+                                      : 'bg-purple-100 text-purple-700 border border-purple-200'
+                                  }`}>
+                                    {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' ? 'POLAROID' : 'MAGNET'}
+                                  </span>
+                                </div>
                                 <p className="text-sm text-gray-600">Qty: {item.quantity}</p>
+                                {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' && item.polaroidType && (
+                                  <p className="text-xs text-purple-600 font-semibold mt-1">
+                                    Type: {item.polaroidType}
+                                  </p>
+                                )}
+                                {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' && item.caption && item.caption.trim() && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Caption: "{item.caption}"
+                                  </p>
+                                )}
+                                {(item.orderType || order.orderType || 'MAGNET') === 'POLAROID' && item.polaroidType === 'Custom Text Caption' && (!item.caption || !item.caption.trim()) && (
+                                  <p className="text-xs text-gray-400 italic mt-1">
+                                    (No caption provided)
+                                  </p>
+                                )}
                               </div>
                               <div className="text-right">
                                 <p className="text-sm font-bold text-gradient">₹{(item.quantity * item.pricePerUnit).toFixed(2)}</p>

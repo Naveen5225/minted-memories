@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import axios from 'axios'
+import api from '../api'
 import Navbar from '../components/Navbar'
 
 function AdminDashboard() {
@@ -37,7 +37,7 @@ function AdminDashboard() {
         url += `?range=${dateRange}`
       }
 
-      const response = await axios.get(url)
+      const response = await api.get(url)
       if (response.data.success) {
         setStats(response.data.stats)
         setDayWiseData(response.data.dayWiseData)
