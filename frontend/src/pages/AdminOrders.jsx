@@ -337,6 +337,12 @@ function AdminOrders() {
                         <p className="text-sm text-gray-600">
                           {formatDate(order.createdAt)}
                         </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          User ID: {order.user?.phone ?? order.phone}
+                        </p>
+                      </div>
+                      <div className="sm:hidden text-xs text-gray-500">
+                        User ID: {order.user?.phone ?? order.phone}
                       </div>
                     </div>
                   </div>
@@ -384,6 +390,10 @@ function AdminOrders() {
                         <p className="text-sm font-semibold text-gray-700 mb-2">
                           Customer Information
                         </p>
+                        <p className="text-sm text-gray-900 mb-1">
+                          <span className="font-medium">User ID:</span>{' '}
+                          {order.user?.phone ?? order.phone}
+                        </p>
                         <p className="text-sm text-gray-900">
                           <span className="font-medium">Name:</span>{' '}
                           {order.customerName}
@@ -392,12 +402,6 @@ function AdminOrders() {
                           <span className="font-medium">Phone:</span>{' '}
                           {order.phone}
                         </p>
-                        {order.user && (
-                          <p className="text-sm text-gray-900">
-                            <span className="font-medium">User ID:</span>{' '}
-                            {order.user.id}
-                          </p>
-                        )}
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-gray-700 mb-2">
