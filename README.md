@@ -304,4 +304,4 @@ This project is proprietary software for Minted Memories.
 
 ---
 
-**Note**: Make sure to replace placeholder values (like email, WhatsApp number, Instagram handle) with actual values before deploying to production.
+**Note**: Make sure to replace placeholder values (like email, WhatsApp number, Instagram handle) with actual values before deploying to production..

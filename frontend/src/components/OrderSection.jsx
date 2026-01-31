@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import fridgeMagnetsImage from '../assets/fridge-magnets-hero.png'
-import polaroidHeroImage from '../assets/polaroidHero.png'
+import polaroidHeroImage from '../assets/PolaroidHero.png'
 
 function OrderSection({ onOrderClick, initialOrderType }) {
   const navigate = useNavigate()
