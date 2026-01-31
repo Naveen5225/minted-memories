@@ -68,14 +68,15 @@ model OrderItem {
 }
 
 model Payment {
-  id                String   @id @default(cuid())
-  orderId           String   @map("order_id") @db.VarChar(191)
-  razorpayOrderId   String?  @map("razorpay_order_id") @db.VarChar(255)
-  razorpayPaymentId String?  @map("razorpay_payment_id") @db.VarChar(255)
-  razorpaySignature String?  @map("razorpay_signature") @db.VarChar(255)
-  status            String   @default("PENDING") @db.VarChar(20) // "PENDING", "SUCCESS", "FAILED"
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(cuid())
+  orderId            String   @map("order_id") @db.VarChar(191)
+  razorpayOrderId    String?  @map("razorpay_order_id") @db.VarChar(255)
+  razorpayPaymentId  String?  @map("razorpay_payment_id") @db.VarChar(255)
+  razorpaySignature  String?  @map("razorpay_signature") @db.VarChar(255)
+  phonepeOrderId     String?  @map("phonepe_order_id") @db.VarChar(255)
+  status             String   @default("PENDING") @db.VarChar(20) // "PENDING", "SUCCESS", "FAILED"
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 

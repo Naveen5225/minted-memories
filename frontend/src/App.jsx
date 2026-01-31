@@ -9,6 +9,8 @@ import AdminDashboard from './pages/AdminDashboard'
 import AdminOrders from './pages/AdminOrders'
 import AdminEventBookings from './pages/AdminEventBookings'
 import Cart from './pages/Cart'
+import OrderSuccess from './pages/OrderSuccess'
+import Services from './pages/Services'
 
 function App() {
   return (
@@ -17,7 +19,9 @@ function App() {
         <Router>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/services" element={<Services />} />
             <Route path="/cart" element={<Cart />} />
+            <Route path="/order-success" element={<OrderSuccess />} />
             <Route path="/orders" element={<Orders />} />
             <Route path="/contact" element={<Contact />} />
           <Route path="/admin/login" element={<AdminLogin />} />

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 
-// Import gallery images - user will add these to assets folder
 import g1 from '../assets/g1.png'
 import g2 from '../assets/g2.png'
 import g3 from '../assets/g3.png'
@@ -12,203 +11,185 @@ import g8 from '../assets/g8.png'
 import g9 from '../assets/g9.png'
 import g10 from '../assets/g10.png'
 
+const galleryImages = [g1, g2, g3, g4, g5, g6, g7, g8, g9, g10]
+
+// Duplicate for infinite circular scroll (no jump back to start)
+const circularImages = [...galleryImages, ...galleryImages]
+
+const CARD_WIDTH_MOBILE = 280
+const CARD_WIDTH_DESKTOP = 320
+const GAP = 16
+const AUTO_SCROLL_INTERVAL = 2500
+// Wrap when this close to the end/start of one "lap" so the circle is seamless
+const WRAP_THRESHOLD = 20
+
 function ProductGallery() {
-  const [currentIndex, setCurrentIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
-  const [imagesPerView, setImagesPerView] = useState(3)
-  const scrollContainerRef = useRef(null)
-  const autoScrollIntervalRef = useRef(null)
+  const [cardWidth, setCardWidth] = useState(CARD_WIDTH_DESKTOP)
+  const scrollRef = useRef(null)
+  const autoScrollTimerRef = useRef(null)
+  const resumeTimerRef = useRef(null)
+  const lastScrollLeftRef = useRef(0)
+  const isWrappingRef = useRef(false)
 
-  const galleryImages = [g1, g2, g3, g4, g5, g6, g7, g8, g9, g10]
-  const totalImages = galleryImages.length
-  const maxIndex = Math.max(0, totalImages - imagesPerView)
+  const total = galleryImages.length
+  const step = cardWidth + GAP
+  const firstSetWidth = total * step - GAP
 
-  // Update imagesPerView based on screen size
   useEffect(() => {
-    const updateImagesPerView = () => {
-      if (window.innerWidth < 640) {
-        setImagesPerView(1) // Mobile: 1 image
-      } else {
-        setImagesPerView(3) // Desktop: 3 images
-      }
+    const updateWidth = () => {
+      setCardWidth(window.innerWidth < 640 ? CARD_WIDTH_MOBILE : CARD_WIDTH_DESKTOP)
     }
-
-    updateImagesPerView()
-    window.addEventListener('resize', updateImagesPerView)
-    return () => window.removeEventListener('resize', updateImagesPerView)
+    updateWidth()
+    window.addEventListener('resize', updateWidth)
+    return () => window.removeEventListener('resize', updateWidth)
   }, [])
 
-  // Auto-scroll every 1 second
-  useEffect(() => {
-    if (!isPaused) {
-      autoScrollIntervalRef.current = setInterval(() => {
-        setCurrentIndex((prev) => {
-          if (prev >= maxIndex) {
-            return 0 // Loop back to start
-          }
-          return prev + 1
-        })
-      }, 1000)
+  // Circular scroll: when last photo passes, next is first again — wrap position so it never jumps visibly
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el || isWrappingRef.current) return
+
+    const scrollLeft = el.scrollLeft
+
+    // Reached/passed end of first "lap" (showing duplicate) → jump back to start of first lap (same visual = circle)
+    if (scrollLeft >= firstSetWidth - WRAP_THRESHOLD) {
+      isWrappingRef.current = true
+      el.scrollLeft = Math.max(0, scrollLeft - firstSetWidth)
+      lastScrollLeftRef.current = el.scrollLeft
+      isWrappingRef.current = false
+    }
+    // At start and user scrolled left → jump to end of first lap so they can keep going left (circle)
+    else if (scrollLeft <= WRAP_THRESHOLD && scrollLeft < lastScrollLeftRef.current) {
+      isWrappingRef.current = true
+      el.scrollLeft = scrollLeft + firstSetWidth
+      lastScrollLeftRef.current = el.scrollLeft
+      isWrappingRef.current = false
+    } else {
+      lastScrollLeftRef.current = scrollLeft
     }
 
-    return () => {
-      if (autoScrollIntervalRef.current) {
-        clearInterval(autoScrollIntervalRef.current)
-      }
-    }
-  }, [isPaused, maxIndex])
-
-  // Update scroll position when currentIndex changes
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      const container = scrollContainerRef.current
-      const itemWidth = container.scrollWidth / totalImages
-      const scrollPosition = currentIndex * itemWidth * imagesPerView
-      container.scrollTo({
-        left: scrollPosition,
-        behavior: 'smooth'
-      })
-    }
-  }, [currentIndex, imagesPerView, totalImages])
-
-  // Handle manual scroll
-  const handleScroll = (e) => {
-    const container = e.target
-    const scrollLeft = container.scrollLeft
-    const itemWidth = container.scrollWidth / totalImages
-    const newIndex = Math.round(scrollLeft / (itemWidth * imagesPerView))
-    
-    if (newIndex !== currentIndex && newIndex >= 0 && newIndex <= maxIndex) {
-      setCurrentIndex(newIndex)
-      // Pause auto-scroll when user manually scrolls
-      setIsPaused(true)
-      // Resume after 3 seconds of no interaction
-      setTimeout(() => setIsPaused(false), 3000)
-    }
+    setIsPaused(true)
+    if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current)
+    resumeTimerRef.current = setTimeout(() => setIsPaused(false), 2000)
   }
 
-  // Handle mouse enter/leave to pause/resume
+  // Auto-advance: always scroll right by step; wrap is handled in onScroll
+  useEffect(() => {
+    if (total === 0 || isPaused) return
+
+    autoScrollTimerRef.current = setInterval(() => {
+      if (!scrollRef.current) return
+      const el = scrollRef.current
+      el.scrollTo({ left: el.scrollLeft + step, behavior: 'smooth' })
+    }, AUTO_SCROLL_INTERVAL)
+
+    return () => {
+      if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current)
+    }
+  }, [total, isPaused, step])
+
   const handleMouseEnter = () => {
+    if (resumeTimerRef.current) {
+      clearTimeout(resumeTimerRef.current)
+      resumeTimerRef.current = null
+    }
     setIsPaused(true)
   }
 
   const handleMouseLeave = () => {
-    setIsPaused(false)
+    resumeTimerRef.current = setTimeout(() => setIsPaused(false), 1500)
   }
 
-  // Navigation buttons
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : maxIndex))
-    setIsPaused(true)
-    setTimeout(() => setIsPaused(false), 3000)
+  const goPrev = () => {
+    if (!scrollRef.current) return
+    scrollRef.current.scrollTo({ left: scrollRef.current.scrollLeft - step, behavior: 'smooth' })
+    handleMouseEnter()
+    resumeTimerRef.current = setTimeout(() => setIsPaused(false), 2000)
   }
 
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev < maxIndex ? prev + 1 : 0))
-    setIsPaused(true)
-    setTimeout(() => setIsPaused(false), 3000)
+  const goNext = () => {
+    if (!scrollRef.current) return
+    scrollRef.current.scrollTo({ left: scrollRef.current.scrollLeft + step, behavior: 'smooth' })
+    handleMouseEnter()
+    resumeTimerRef.current = setTimeout(() => setIsPaused(false), 2000)
   }
 
   return (
-    <section className="py-16 sm:py-20 bg-gradient-to-br from-purple-50 via-indigo-50 to-purple-50 relative overflow-hidden">
-      {/* Background decoration */}
-      <div className="absolute top-0 left-0 w-full h-full opacity-10">
-        <div className="absolute top-20 right-20 w-64 h-64 bg-purple-500 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-20 w-64 h-64 bg-indigo-500 rounded-full blur-3xl"></div>
-      </div>
+    <section
+      className="relative py-6 sm:py-8 overflow-hidden border-t border-b border-gray-100"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Light background */}
+      <div className="absolute inset-0 bg-gray-50/80" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
+        {/* Compact header */}
+        <div className="text-center mb-5 sm:mb-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900">
             <span className="text-gradient">Gallery</span>
           </h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
-            See how your memories come to life as premium fridge magnets
+          <p className="text-gray-500 text-sm mt-1 max-w-md mx-auto">
+            Memories as magnets & polaroids
           </p>
         </div>
 
-        {/* Gallery Container */}
-        <div className="relative">
-          {/* Navigation Buttons */}
+        {/* Strip: arrows + scroll */}
+        <div className="relative flex items-center gap-1 sm:gap-2">
           <button
-            onClick={handlePrev}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            className="absolute left-2 sm:left-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 backdrop-blur-sm p-2 sm:p-3 rounded-full shadow-lg hover:bg-white transition-all transform hover:scale-110 active:scale-95 border border-purple-200"
-            aria-label="Previous images"
+            type="button"
+            onClick={goPrev}
+            className="flex-shrink-0 z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white shadow border border-gray-200 flex items-center justify-center text-gray-600 hover:text-purple-600 hover:border-purple-200 hover:shadow-md transition-all"
+            aria-label="Previous"
           >
-            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
 
-          <button
-            onClick={handleNext}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            className="absolute right-2 sm:right-0 top-1/2 -translate-y-1/2 z-10 bg-white/90 backdrop-blur-sm p-2 sm:p-3 rounded-full shadow-lg hover:bg-white transition-all transform hover:scale-110 active:scale-95 border border-purple-200"
-            aria-label="Next images"
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-hide snap-x snap-mandatory py-1 -mx-1"
+            style={{ scrollSnapType: 'x mandatory' }}
           >
-            <svg className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex" style={{ minWidth: 'min-content', gap: GAP }}>
+              {circularImages.map((src, index) => (
+                <div
+                  key={index}
+                  className="flex-shrink-0 snap-center"
+                  style={{ width: cardWidth }}
+                >
+                  <div className="aspect-square rounded-xl overflow-hidden bg-white shadow-md border border-gray-100 hover:shadow-lg hover:ring-2 hover:ring-purple-200 transition-all duration-200">
+                    <img
+                      src={src}
+                      alt={`Gallery ${(index % galleryImages.length) + 1}`}
+                      className="w-full h-full object-cover object-top"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={goNext}
+            className="flex-shrink-0 z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white shadow border border-gray-200 flex items-center justify-center text-gray-600 hover:text-purple-600 hover:border-purple-200 hover:shadow-md transition-all"
+            aria-label="Next"
+          >
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
-
-          {/* Scrollable Gallery */}
-          <div
-            ref={scrollContainerRef}
-            onScroll={handleScroll}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            className="flex gap-4 sm:gap-6 overflow-x-auto scrollbar-hide scroll-smooth snap-x snap-mandatory pb-2"
-          >
-            {galleryImages.map((img, index) => (
-              <div
-                key={index}
-                className="flex-shrink-0 w-full sm:w-1/3 snap-center group"
-              >
-                <div className="aspect-square rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 ring-2 ring-transparent hover:ring-purple-300 bg-white p-2">
-                  <img
-                    src={img}
-                    alt={`Gallery image ${index + 1}`}
-                    className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => {
-                      // Fallback if image doesn't exist yet
-                      e.target.style.display = 'none'
-                      e.target.parentElement.innerHTML = `
-                        <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-100 to-indigo-100 rounded-xl">
-                          <span class="text-purple-400 text-sm">g${index + 1}</span>
-                        </div>
-                      `
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Scroll Indicators */}
-          <div className="flex justify-center gap-2 mt-6">
-            {Array.from({ length: maxIndex + 1 }).map((_, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  setCurrentIndex(index)
-                  setIsPaused(true)
-                  setTimeout(() => setIsPaused(false), 3000)
-                }}
-                className={`h-2 rounded-full transition-all ${
-                  index === currentIndex
-                    ? 'w-8 bg-gradient-to-r from-indigo-500 to-purple-600'
-                    : 'w-2 bg-gray-300 hover:bg-gray-400'
-                }`}
-                aria-label={`Go to slide ${index + 1}`}
-              />
-            ))}
-          </div>
         </div>
-      </div>
 
+        <p className="text-center text-gray-400 text-xs mt-3">
+          Hover to pause • Scroll or use arrows
+        </p>
+      </div>
     </section>
   )
 }

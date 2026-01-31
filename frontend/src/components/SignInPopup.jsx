@@ -3,109 +3,63 @@ import api from '../api'
 import { useAuth } from '../context/AuthContext'
 
 function SignInPopup({ onClose, onSuccess }) {
-  const [step, setStep] = useState('phone') // 'phone', 'otp', 'name'
+  const [step, setStep] = useState('phone') // 'phone' | 'name'
   const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
   const [name, setName] = useState('')
-  const [isNewUser, setIsNewUser] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const { loginUser } = useAuth()
 
-  const handleSendOTP = async (e) => {
+  const handleSubmitPhone = async (e) => {
     e?.preventDefault()
     setError('')
-    
     if (!phone || !/^\d{10}$/.test(phone)) {
       setError('Please enter a valid 10-digit phone number')
       return
     }
-
     setLoading(true)
     try {
-      const response = await api.post('/api/auth/send-otp', { phone })
-      if (response.data.success) {
-        setStep('otp')
-        // In development, show OTP in alert
-        if (response.data.otp) {
-          alert(`OTP: ${response.data.otp} (Development mode)`)
-        }
-      } else {
-        setError(response.data.message || 'Failed to send OTP')
-      }
-    } catch (err) {
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to send OTP. Please try again.'
-      setError(errorMessage)
-      console.error('OTP send error:', err.response?.data || err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleVerifyOTP = async (e) => {
-    e?.preventDefault()
-    setError('')
-
-    if (!otp || !/^\d{6}$/.test(otp)) {
-      setError('Please enter a valid 6-digit OTP')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const response = await api.post('/api/auth/verify-otp', {
-        phone,
-        otp
-      })
-
-      if (response.data.success) {
-        // Existing user - login successful
-        loginUser(response.data.token, response.data.user)
+      const res = await api.post('/api/auth/login', { phone })
+      if (res.data.token && res.data.user) {
+        loginUser(res.data.token, res.data.user)
         if (onSuccess) onSuccess()
         if (onClose) onClose()
+        return
+      }
+      if (res.data.requiresName) {
+        setStep('name')
       } else {
-        setError(response.data.message || 'Invalid OTP')
+        setError(res.data.message || 'Something went wrong')
       }
     } catch (err) {
-      // Check if name is required (new user)
-      if (err.response?.status === 400 && err.response?.data?.requiresName) {
-        setIsNewUser(true)
-        setStep('name')
-        // Don't show error, just move to name step
-      } else {
-        setError(err.response?.data?.message || 'Invalid OTP. Please try again.')
-      }
+      setError(err.response?.data?.message || err.message || 'Something went wrong')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleCompleteSignup = async (e) => {
+  const handleRegister = async (e) => {
     e?.preventDefault()
     setError('')
-
     if (!name.trim()) {
       setError('Please enter your name')
       return
     }
-
     setLoading(true)
     try {
-      const response = await api.post('/api/auth/verify-otp', {
+      const res = await api.post('/api/auth/register', {
         phone,
-        otp,
         name: name.trim()
       })
-
-      if (response.data.success) {
-        loginUser(response.data.token, response.data.user)
+      if (res.data.success && res.data.token && res.data.user) {
+        loginUser(res.data.token, res.data.user)
         if (onSuccess) onSuccess()
         if (onClose) onClose()
       } else {
-        setError(response.data.message || 'Failed to create account')
+        setError(res.data.message || 'Registration failed')
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create account. Please try again.')
+      setError(err.response?.data?.message || err.message || 'Registration failed')
     } finally {
       setLoading(false)
     }
@@ -117,8 +71,7 @@ function SignInPopup({ onClose, onSuccess }) {
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-2xl font-bold text-gray-900">
             {step === 'phone' && 'Sign In'}
-            {step === 'otp' && 'Verify OTP'}
-            {step === 'name' && 'Complete Sign Up'}
+            {step === 'name' && 'Register'}
           </h2>
           <button
             onClick={onClose}
@@ -138,7 +91,7 @@ function SignInPopup({ onClose, onSuccess }) {
           )}
 
           {step === 'phone' && (
-            <form onSubmit={handleSendOTP} className="space-y-4">
+            <form onSubmit={handleSubmitPhone} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Phone Number
@@ -147,7 +100,7 @@ function SignInPopup({ onClose, onSuccess }) {
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  maxLength="10"
+                  maxLength={10}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none"
                   placeholder="10 digit phone number"
                   required
@@ -158,58 +111,28 @@ function SignInPopup({ onClose, onSuccess }) {
                 disabled={loading}
                 className="w-full bg-gray-900 text-white py-3 px-6 rounded-lg font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Sending...' : 'Send OTP'}
+                {loading ? 'Checking...' : 'Continue'}
               </button>
             </form>
           )}
 
-          {step === 'otp' && (
-            <form onSubmit={handleVerifyOTP} className="space-y-4">
+          {step === 'name' && (
+            <form onSubmit={handleRegister} className="space-y-4">
+              <p className="text-sm text-gray-600">First time here? Enter your name to register.</p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Enter OTP
+                  Phone
                 </label>
                 <input
                   type="text"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  maxLength="6"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none text-center text-2xl tracking-widest"
-                  placeholder="000000"
-                  required
+                  value={phone}
+                  readOnly
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50"
                 />
-                <p className="mt-2 text-sm text-gray-600">
-                  OTP sent to {phone}
-                </p>
               </div>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('phone')
-                    setOtp('')
-                    setError('')
-                  }}
-                  className="flex-1 border-2 border-gray-300 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 bg-gray-900 text-white py-3 px-6 rounded-lg font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Verifying...' : 'Verify OTP'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {step === 'name' && (
-            <form onSubmit={handleCompleteSignup} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Full Name <span className="text-red-500">*</span>
+                  Your Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -223,11 +146,7 @@ function SignInPopup({ onClose, onSuccess }) {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => {
-                    setStep('otp')
-                    setName('')
-                    setError('')
-                  }}
+                  onClick={() => { setStep('phone'); setName(''); setError('') }}
                   className="flex-1 border-2 border-gray-300 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
                 >
                   Back
@@ -237,7 +156,7 @@ function SignInPopup({ onClose, onSuccess }) {
                   disabled={loading}
                   className="flex-1 bg-gray-900 text-white py-3 px-6 rounded-lg font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Creating...' : 'Complete Sign Up'}
+                  {loading ? 'Registering...' : 'Register'}
                 </button>
               </div>
             </form>

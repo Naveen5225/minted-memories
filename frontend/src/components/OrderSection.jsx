@@ -1,14 +1,20 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import fridgeMagnetsImage from '../assets/fridge-magnets-hero.png'
+import polaroidHeroImage from '../assets/polaroidHero.png'
 
-function OrderSection() {
+function OrderSection({ onOrderClick, initialOrderType }) {
   const navigate = useNavigate()
   const { items, addItem, removeItem, updateQuantity } = useCart()
   const [currentPhoto, setCurrentPhoto] = useState(null)
   const [photoName, setPhotoName] = useState('')
-  const [orderType, setOrderType] = useState('MAGNET') // 'MAGNET' or 'POLAROID'
+  const [orderType, setOrderType] = useState(initialOrderType || 'MAGNET') // 'MAGNET' or 'POLAROID'
+
+  // Sync tab when landing from Services with ?tab=polaroid
+  useEffect(() => {
+    if (initialOrderType) setOrderType(initialOrderType)
+  }, [initialOrderType])
   const [polaroidType, setPolaroidType] = useState('')
   const [caption, setCaption] = useState('')
   const fileInputRef = useRef(null)
@@ -233,11 +239,19 @@ function OrderSection() {
                   {photos.length === 0 && !currentPhoto && (
                     <div className="text-center py-6 space-y-4">
                       <div className="mx-auto w-full max-w-xs rounded-2xl overflow-hidden shadow-md border border-purple-100">
-                        <img
-                          src={fridgeMagnetsImage}
-                          alt="Minted Memories custom fridge magnets"
-                          className="w-full h-full object-cover"
-                        />
+                        {orderType === 'MAGNET' ? (
+                          <img
+                            src={fridgeMagnetsImage}
+                            alt="Minted Memories custom fridge magnets"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={polaroidHeroImage}
+                            alt="Minted Memories Polaroid prints"
+                            className="w-full h-full object-cover"
+                          />
+                        )}
                       </div>
                       <p className="text-gray-500 text-sm">
                         Upload your first photo to start creating beautiful {orderType === 'MAGNET' ? 'fridge magnets' : 'Polaroid prints'} ✨

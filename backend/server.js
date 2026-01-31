@@ -7,7 +7,6 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import prisma from './db.js'
 import { authenticateUser, authenticateAdmin } from './middleware/auth.js'
-import { generateOTP, storeOTP, verifyOTP } from './utils/otp.js'
 
 dotenv.config()
 
@@ -38,6 +37,12 @@ app.options('*', cors())
 // Increase JSON payload limit for base64 images
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+
+// Log every request (helps debug 404)
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`)
+  next()
+})
 
 // Initialize Razorpay (only if credentials are available)
 let razorpay = null
@@ -76,180 +81,71 @@ app.get('/api/test', (req, res) => {
   res.json({ status: 'ok', message: 'Test endpoint working' })
 })
 
-// ==================== AUTHENTICATION ENDPOINTS ====================
+// ==================== AUTHENTICATION ENDPOINTS (no OTP) ====================
 
-// Handle OPTIONS for send-otp (CORS preflight)
-app.options('/api/auth/send-otp', cors(), (req, res) => {
-  res.sendStatus(200)
-})
+app.options('/api/auth/login', cors(), (req, res) => res.sendStatus(204))
+app.options('/api/auth/register', cors(), (req, res) => res.sendStatus(204))
 
-// Send OTP
-app.post('/api/auth/send-otp', cors(), async (req, res) => {
+// Login: phone only. If user exists → return token. If new → return requiresName.
+app.post('/api/auth/login', cors(), async (req, res) => {
   try {
-    console.log('Send OTP request received:', {
-      method: req.method,
-      url: req.url,
-      headers: req.headers,
-      body: req.body
-    })
-
-    const { phone } = req.body
-
-    if (!phone) {
-      return res.status(400).json({
-        success: false,
-        message: 'Phone number is required'
+    const phone = String(req.body.phone || '').replace(/\D/g, '')
+    if (!phone || phone.length !== 10) {
+      return res.status(400).json({ success: false, message: 'Valid 10-digit phone number is required' })
+    }
+    const user = await prisma.user.findUnique({ where: { phone } })
+    if (user) {
+      const token = jwt.sign(
+        { userId: user.id, phone: user.phone, role: 'user' },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      )
+      return res.json({
+        success: true,
+        message: 'Login successful',
+        token,
+        user: { id: user.id, name: user.name, phone: user.phone }
       })
     }
-
-    // Clean phone number (remove any non-digits)
-    const cleanPhone = phone.replace(/\D/g, '')
-
-    if (!cleanPhone || cleanPhone.length !== 10) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid 10-digit phone number is required'
-      })
-    }
-
-    // Generate and store OTP
-    let otp
-    try {
-      otp = generateOTP()
-      if (!otp || otp.length !== 6) {
-        throw new Error('Invalid OTP generated')
-      }
-      storeOTP(cleanPhone, otp)
-    } catch (otpError) {
-      console.error('OTP generation/storage error:', otpError)
-      throw new Error('Failed to generate or store OTP')
-    }
-
-    // In production, send OTP via SMS service (Twilio, etc.)
-    // For now, we'll return it in response (remove in production)
-    console.log(`OTP for ${cleanPhone}: ${otp}`)
-
-    console.log(`OTP generated and stored for ${cleanPhone}`)
-
-    res.json({
-      success: true,
-      message: 'OTP sent successfully',
-      // Remove this in production - OTP should only be sent via SMS
-      otp: process.env.NODE_ENV !== 'production' ? otp : undefined
-    })
-  } catch (error) {
-    console.error('Error sending OTP:', error)
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    })
-    
-    // Don't send 403, send 500 for server errors
-    const statusCode = error.statusCode || 500
-    res.status(statusCode).json({
-      success: false,
-      message: 'Failed to send OTP. Please try again.',
-      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    })
+    res.json({ success: true, requiresName: true })
+  } catch (e) {
+    console.error('Login error:', e)
+    res.status(500).json({ success: false, message: 'Something went wrong' })
   }
 })
 
-// Verify OTP and create/login user
-app.post('/api/auth/verify-otp', async (req, res) => {
+// Register: phone + name (first-time user). Create user and return token.
+app.post('/api/auth/register', cors(), async (req, res) => {
   try {
-    const { phone: rawPhone, otp: rawOtp, name } = req.body
-
-    const phone = String(rawPhone || '').replace(/\D/g, '')
-    const otp = String(rawOtp || '').trim()
-
+    const phone = String(req.body.phone || '').replace(/\D/g, '')
+    const name = String(req.body.name || '').trim()
     if (!phone || phone.length !== 10) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid 10-digit phone number is required'
-      })
+      return res.status(400).json({ success: false, message: 'Valid 10-digit phone number is required' })
     }
-
-    if (!otp || !/^\d{6}$/.test(otp)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid 6-digit OTP is required'
-      })
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'Name is required' })
     }
-
-    // Check if user exists first
-    let user = await prisma.user.findUnique({
-      where: { phone }
+    const existing = await prisma.user.findUnique({ where: { phone } })
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'This number is already registered. Please sign in.' })
+    }
+    const user = await prisma.user.create({
+      data: { name, phone }
     })
-
-    // If new user, verify OTP without consuming it first
-    if (!user) {
-      // Verify OTP without consuming (consume = false)
-      const otpResult = verifyOTP(phone, otp, false)
-      if (!otpResult.valid) {
-        return res.status(400).json({
-          success: false,
-          message: otpResult.message,
-          requiresName: true
-        })
-      }
-
-      // OTP is valid, check if name is provided
-      if (!name || name.trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Name is required for new users',
-          requiresName: true
-        })
-      }
-
-      // Create user and consume OTP
-      user = await prisma.user.create({
-        data: {
-          name: name.trim(),
-          phone
-        }
-      })
-      
-      // Now consume the OTP
-      verifyOTP(phone, otp, true)
-    } else {
-      // Existing user - verify and consume OTP
-      const otpResult = verifyOTP(phone, otp, true)
-      if (!otpResult.valid) {
-        return res.status(400).json({
-          success: false,
-          message: otpResult.message
-        })
-      }
-    }
-
-    // Generate JWT token
     const token = jwt.sign(
       { userId: user.id, phone: user.phone, role: 'user' },
       JWT_SECRET,
       { expiresIn: '30d' }
     )
-
     res.json({
       success: true,
-      message: 'Login successful',
+      message: 'Registered successfully',
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone
-      }
+      user: { id: user.id, name: user.name, phone: user.phone }
     })
-  } catch (error) {
-    console.error('Error verifying OTP:', error)
-    const message = process.env.NODE_ENV !== 'production'
-      ? (error.message || 'Failed to verify OTP. Please try again.')
-      : 'Failed to verify OTP. Please try again.'
-    res.status(500).json({
-      success: false,
-      message
-    })
+  } catch (e) {
+    console.error('Register error:', e)
+    res.status(500).json({ success: false, message: 'Registration failed' })
   }
 })
 
@@ -451,12 +347,13 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
           }
         })
 
+        // Return minimal response (exclude photoUrl) for faster response
         return res.json({
           success: true,
           message: 'Order placed successfully',
           order: {
             id: order.id,
-            orderId: order.id, // For frontend compatibility
+            orderId: order.id,
             totalQuantity: totalQuantity,
             totalAmount: parseFloat(order.totalAmount),
             paymentMode: order.paymentMode,
@@ -510,6 +407,7 @@ app.post('/api/orders/create', authenticateUser, async (req, res) => {
           }
         })
 
+        // Return minimal response (exclude photoUrl) for faster response
         return res.json({
           success: true,
           order: {

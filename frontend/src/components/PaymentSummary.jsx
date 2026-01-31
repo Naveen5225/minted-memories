@@ -66,90 +66,88 @@ function PaymentSummary({ photos, subtotal, totalAmount, address, onBack, onClos
         setIsProcessing(false)
         setShowSuccessModal(true)
         return
-      } else {
-        // Online payment - Create Razorpay order
-        const paymentResponse = await api.post('/api/payment/create', {
-          orderId: order.id,
-          amount: Math.round(totalAmount * 100) // Convert to paise
+      }
+
+      // Online payment: Razorpay only
+      const paymentResponse = await api.post('/api/payment/create', {
+        orderId: order.id,
+        amount: Math.round(totalAmount * 100) // paise
+      })
+
+      if (!paymentResponse.data.success) {
+        throw new Error(paymentResponse.data.message || 'Failed to create payment order')
+      }
+
+      const { orderId: razorpayOrderId, amount, key } = paymentResponse.data
+
+      const loadRazorpayScript = () => {
+        return new Promise((resolve, reject) => {
+          if (window.Razorpay) {
+            resolve()
+            return
+          }
+          const script = document.createElement('script')
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+          script.onload = () => resolve()
+          script.onerror = () => reject(new Error('Failed to load Razorpay script'))
+          document.body.appendChild(script)
         })
+      }
 
-        if (!paymentResponse.data.success) {
-          throw new Error(paymentResponse.data.message || 'Failed to create payment order')
-        }
+      await loadRazorpayScript()
 
-        const { orderId: razorpayOrderId, amount, key } = paymentResponse.data
+      const totalQuantity = photos.reduce((sum, photo) => sum + photo.quantity, 0)
+      const hasPolaroid = photos.some(p => p.orderType === 'POLAROID')
+      const orderTypeLabel = hasPolaroid ? 'Custom Photo(s)' : 'Fridge Magnet(s)'
 
-        // Load Razorpay script if not already loaded
-        const loadRazorpayScript = () => {
-          return new Promise((resolve, reject) => {
-            if (window.Razorpay) {
-              resolve()
-              return
-            }
+      const options = {
+        key: key,
+        amount: amount,
+        currency: 'INR',
+        name: 'Minted Memories',
+        description: `${totalQuantity} ${orderTypeLabel}`,
+        order_id: razorpayOrderId,
+        handler: async function (response) {
+          try {
+            const verifyResponse = await api.post('/api/payment/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              orderId: order.id
+            })
 
-            const script = document.createElement('script')
-            script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-            script.onload = () => resolve()
-            script.onerror = () => reject(new Error('Failed to load Razorpay script'))
-            document.body.appendChild(script)
-          })
-        }
-
-        await loadRazorpayScript()
-
-        const totalQuantity = photos.reduce((sum, photo) => sum + photo.quantity, 0)
-        const orderTypeLabel = orderType === 'POLAROID' ? 'Polaroid Print(s)' : 'Fridge Magnet(s)'
-
-        const options = {
-          key: key,
-          amount: amount,
-          currency: 'INR',
-          name: 'Minted Memories',
-          description: `${totalQuantity} Custom Photo ${orderTypeLabel}`,
-          order_id: razorpayOrderId,
-          handler: async function (response) {
-            try {
-              // Verify payment
-              const verifyResponse = await api.post('/api/payment/verify', {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                orderId: order.id
+            if (verifyResponse.data.success) {
+              onSubmit({
+                paymentMode: 'ONLINE',
+                orderId: order.id,
+                paymentId: response.razorpay_payment_id
               })
-
-              if (verifyResponse.data.success) {
-                onSubmit({
-                  paymentMode: 'ONLINE',
-                  orderId: order.id,
-                  paymentId: response.razorpay_payment_id
-                })
-              } else {
-                setError('Payment verification failed. Please contact support.')
-                setIsProcessing(false)
-              }
-            } catch (err) {
-              setError(err.response?.data?.message || 'Payment verification failed. Please contact support.')
+            } else {
+              setError('Payment verification failed. Please contact support.')
               setIsProcessing(false)
             }
-          },
-          prefill: {
-            name: address.fullName,
-            contact: address.phone,
-            email: ''
-          },
-          theme: {
-            color: '#000000'
-          },
-          modal: {
-            ondismiss: function () {
-              setIsProcessing(false)
-            }
+          } catch (err) {
+            setError(err.response?.data?.message || 'Payment verification failed. Please contact support.')
+            setIsProcessing(false)
+          }
+        },
+        prefill: {
+          name: address.fullName,
+          contact: address.phone,
+          email: ''
+        },
+        theme: {
+          color: '#000000'
+        },
+        modal: {
+          ondismiss: function () {
+            setIsProcessing(false)
           }
         }
-
-        const razorpay = new window.Razorpay(options)
-        razorpay.open()
       }
+
+      const razorpay = new window.Razorpay(options)
+      razorpay.open()
     } catch (err) {
       console.error('Order placement error:', err)
       const errorMessage = err.response?.data?.message || err.message || 'Failed to place order. Please try again.'
@@ -267,28 +265,47 @@ function PaymentSummary({ photos, subtotal, totalAmount, address, onBack, onClos
                 />
                 <div className="ml-3 flex-1">
                   <div className="font-semibold text-gray-900">Online Payment</div>
-                  <div className="text-sm text-gray-600">Pay securely with Razorpay</div>
+                  <div className="text-sm text-gray-600">Pay securely with UPI, cards, or net banking</div>
                 </div>
               </label>
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-4 pt-4 border-t border-gray-200">
-            <button
-              onClick={onBack}
-              disabled={isProcessing}
-              className="flex-1 py-3 px-6 border-2 border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Back
-            </button>
-            <button
-              onClick={handlePlaceOrder}
-              disabled={isProcessing}
-              className="flex-1 gradient-primary text-white py-3 px-6 rounded-lg font-semibold hover:opacity-90 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
-            >
-              {isProcessing ? 'Processing...' : paymentMode === 'COD' ? 'Place Order' : 'Pay Now'}
-            </button>
+          <div className="flex flex-col gap-3 pt-4 border-t border-gray-200">
+            {isProcessing && (
+              <p className="text-sm text-gray-500 text-center">
+                Placing your order… This may take a few seconds.
+              </p>
+            )}
+            <div className="flex gap-4">
+              <button
+                onClick={onBack}
+                disabled={isProcessing}
+                className="flex-1 py-3 px-6 border-2 border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Back
+              </button>
+              <button
+                onClick={handlePlaceOrder}
+                disabled={isProcessing}
+                className="flex-1 gradient-primary text-white py-3 px-6 rounded-lg font-semibold hover:opacity-90 transition-all transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center justify-center gap-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Placing order…
+                  </>
+                ) : paymentMode === 'COD' ? (
+                  'Place Order'
+                ) : (
+                  'Pay Now'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,10 +1,11 @@
 /**
  * Central API client for backend requests.
- * Uses VITE_API_BASE_URL from .env (empty in dev = use Vite proxy).
+ * Set VITE_API_BASE_URL in .env (e.g. http://localhost:5001 for backend port 5001).
  */
 import axios from 'axios'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+const raw = import.meta.env.VITE_API_BASE_URL || ''
+const baseURL = typeof raw === 'string' ? raw.replace(/\/$/, '') : ''
 
 const api = axios.create({
   baseURL,
